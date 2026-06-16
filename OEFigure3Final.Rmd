@@ -1,0 +1,286 @@
+---
+title: "Figure 3 – Reclassified empirical records"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, warning = FALSE, message = FALSE,
+                      fig.width = 7, fig.height = 9)
+
+library(tidyverse)
+library(ggplot2)
+library(patchwork)
+library(scales)
+library(readxl)
+library(RColorBrewer)
+library(ggbeeswarm)
+```
+
+
+```{r load-data}
+# Load the data
+records_raw <- read_excel("Figure3data.xlsx")
+
+# Factor levels set.  E-like/O-like = 1 (bottom) and#   E-like/E-like = 2 (top)
+records <- records_raw %>%
+  mutate(
+    r                  = as.numeric(r),
+    N                  = as.integer(N),
+    expected_direction = as.logical(expected_direction),
+    measurement_class  = factor(
+      measurement_class,
+      levels = c("E-like / O-like", "E-like / E-like")
+    )
+  ) %>%
+  filter(!is.na(r), !is.na(measurement_class))
+
+class_levels <- levels(records$measurement_class)   # ["E-like / O-like", "E-like / E-like"]
+n_classes    <- length(class_levels)
+
+# Numeric y: O-like = 1 (bottom), E-like = 2 (top)
+records <- records %>%
+  mutate(class_num = as.numeric(measurement_class))
+
+# Wider point-size range so large-N points are clearly bigger
+records <- records %>%
+  mutate(pt_size = 0.5 + 5.0 * sqrt(N) / sqrt(max(N, na.rm = TRUE)))
+
+study_levels <- sort(unique(records$source_study))
+n_studies    <- length(study_levels)
+records <- records %>%
+  mutate(source_study_f = factor(source_study, levels = study_levels))
+```
+
+
+
+```{r}
+# Color pallets
+class_pal <- c(
+  "E-like / E-like" = "#8B4513",   
+  "E-like / O-like" = "#005F99"    
+)
+class_pal_light <- c(
+  "E-like / E-like" = "#E8C9A0",   
+  "E-like / O-like" = "#A8D4F0"    
+)
+
+study_cols <- setNames(
+  colorRampPalette(c("#7B3F00", "#0077BB", "#A0522D", "#005A8E", "#5C2E00", "#3399CC"))(n_studies),
+  study_levels
+)
+
+study_shapes <- c(
+  "Bergès et al. (2018)"    = 24,
+  "Ciota et al. (2013)"     = 13,
+  "Doumayrou et al. (2013)" = 22,
+  "Montarry et al. (2012)"  = 23,
+  "Redman et al. (2016)"    = 25,
+  "Rotenberg et al. (2009)" = 21
+)
+nat_theme <- theme_classic(base_size = 9, base_family = "sans") +
+  theme(
+    axis.line         = element_line(colour = "black", linewidth = 0.4),
+    axis.ticks        = element_line(colour = "black", linewidth = 0.3),
+    axis.ticks.length = unit(2.5, "pt"),
+    axis.title        = element_text(size = 8, colour = "black"),
+    axis.text         = element_text(size = 7.5, colour = "black"),
+    panel.border      = element_rect(colour = "black", fill = NA, linewidth = 0.4),
+    panel.grid        = element_blank(),
+    panel.background  = element_rect(fill = "white"),
+    legend.key.size   = unit(9, "pt"),
+    legend.text       = element_text(size = 7.5),
+    legend.title      = element_text(size = 8, face = "bold"),
+    legend.background = element_rect(fill = NA),
+    plot.title        = element_text(size = 9, face = "bold", hjust = 0,
+                                     margin = margin(b = 4)),
+    plot.margin       = margin(8, 10, 4, 8)
+  )
+```
+
+
+
+```{r}
+#  Panel A (bar chart )
+counts <- records %>%
+  mutate(direction = if_else(r >= 0, "positive", "negative")) %>%
+  count(measurement_class, direction) %>%
+  mutate(
+    x_val    = if_else(direction == "positive",  n, -n),
+    x_label  = as.character(n),
+    text_col = "black"
+  )
+
+label_nudge <- 0.22
+
+p_a <- ggplot(counts,
+              aes(x = x_val, y = measurement_class,
+                  fill = measurement_class, alpha = direction)) +
+  geom_col(width = 0.55, colour = "white", linewidth = 0.3) +
+  geom_text(
+    data = counts %>% filter(direction == "positive"),
+    aes(x = x_val - label_nudge, y = measurement_class,
+        label = x_label, colour = I(text_col)),
+    hjust = 1, size = 7.5 / .pt, fontface = "bold",
+    inherit.aes = FALSE
+  ) +
+  geom_text(
+    data = counts %>% filter(direction == "negative"),
+    aes(x = x_val + label_nudge, y = measurement_class,
+        label = x_label),
+    colour = "white",
+    hjust = 0, size = 7.5 / .pt, fontface = "bold",
+    inherit.aes = FALSE
+  ) +
+  geom_vline(xintercept = 0, colour = "black", linewidth = 0.5) +
+  scale_fill_manual(values = class_pal, guide = "none") +
+  scale_alpha_manual(values = c(negative = 1, positive = 0.60), guide = "none") +
+  scale_x_continuous(
+    limits = c(-6.5, 8.5),
+    breaks = c(-6, -4, -2, 0, 2, 4, 6, 8),
+    labels = abs(c(-6, -4, -2, 0, 2, 4, 6, 8)),
+    expand = c(0, 0)
+  ) +
+  scale_y_discrete(limits = class_levels) +
+  labs(
+    title = "A.  Positive and negative relationships by measurement class",
+    x     = "Number of retained records",
+    y     = NULL
+  ) +
+  nat_theme +
+  theme(
+    axis.text.y = element_text(colour = class_pal[class_levels], face = "bold", size = 8.5),
+    plot.title  = element_text(size = 8.5)
+  )
+```
+
+
+
+
+```{r}
+# Panel B (dot plot)
+strip_df <- tibble(
+  class_num = seq_along(class_levels),
+  class_lbl = class_levels
+)
+
+medians <- records %>%
+  group_by(class_num) %>%
+  summarise(med_r = median(r, na.rm = TRUE), .groups = "drop")
+
+records <- records %>%
+  mutate(pt_fill = if_else(
+    expected_direction,
+    class_pal[as.character(measurement_class)],
+    "white"
+  ))
+
+xlim <- c(-1.05, 1.05)
+
+p_b <- ggplot(records, aes(x = r, y = class_num)) +
+  geom_rect(
+    data        = strip_df,
+    aes(xmin = xlim[1], xmax = xlim[2],
+        ymin = class_num - 0.48, ymax = class_num + 0.48,
+        fill = class_lbl),
+    inherit.aes = FALSE, alpha = 0.20
+  ) +
+  scale_fill_manual(values = class_pal_light, guide = "none") +
+  geom_vline(xintercept = 0, linetype = "dashed",
+             colour = "grey30", linewidth = 0.5) +
+  geom_beeswarm(
+    aes(shape = source_study_f,
+        size  = pt_size,
+        fill  = I(pt_fill)),
+    colour   = "black",
+    cex      = 2.5,
+    priority = "ascending",
+    stroke   = 0.7
+  ) +
+  geom_segment(
+    data        = medians,
+    aes(x = med_r, xend = med_r,
+        y = class_num - 0.20, yend = class_num + 0.20),
+    colour      = "black",
+    linewidth   = 2.2,
+    lineend     = "round",
+    inherit.aes = FALSE
+  ) +
+  annotate("text", x = -0.52, y = n_classes + 0.40,
+           label = "negative reported relationship",
+           size = 7 / .pt, colour = "grey35", hjust = 0.5, fontface = "italic") +
+  annotate("text", x =  0.52, y = n_classes + 0.40,
+           label = "positive reported relationship",
+           size = 7 / .pt, colour = "grey35", hjust = 0.5, fontface = "italic") +
+  annotate("point", x = 0.50, y = 0.30, shape = 21, size = 2.4,
+           fill = "grey40", colour = "black", stroke = 0.5) +
+  annotate("text",  x = 0.57, y = 0.30,
+           label = "matches expected direction", size = 6.5 / .pt, hjust = 0) +
+  annotate("point", x = 0.50, y = 0.06, shape = 21, size = 2.4,
+           fill = "white", colour = "black", stroke = 0.5) +
+  annotate("text",  x = 0.57, y = 0.06,
+           label = "opposite direction", size = 6.5 / .pt, hjust = 0) +
+  annotate("segment", x = 0.44, xend = 0.56, y = -0.18, yend = -0.18,
+           colour = "black", linewidth = 1.4, lineend = "round") +
+  annotate("text",  x = 0.57, y = -0.18,
+           label = "class median", size = 6.5 / .pt, hjust = 0) +
+  scale_shape_manual(
+    values = study_shapes,
+    name   = "Source study\n(marker shape)"
+  ) +
+  scale_size_identity() +
+  scale_x_continuous(
+    limits = xlim,
+    breaks = seq(-1, 1, 0.25),
+    labels = c("-1.00", "-0.75", "-0.50", "-0.25", "0.00",
+               "0.25",  "0.50",  "0.75",  "1.00"),
+    expand = c(0, 0)
+  ) +
+  scale_y_continuous(
+    limits = c(-0.55, n_classes + 0.55),
+    breaks = seq_along(class_levels),
+    labels = class_levels,
+    expand = c(0, 0)
+  ) +
+  labs(
+    title   = "B.  Reported correlation for each retained relationship",
+    x       = expression(paste("Reported correlation coefficient, ", italic(r))),
+    y       = NULL,
+    caption = "Point area ∝ √N (source-reported sample size)."
+  ) +
+  nat_theme +
+  theme(
+    axis.text.y       = element_text(colour = class_pal[class_levels], face = "bold", size = 8.5),
+    plot.caption      = element_text(size = 7, colour = "grey40", hjust = 0),
+    legend.position   = c(0.50, -0.18),
+    legend.direction  = "horizontal",
+    legend.key.size   = unit(10, "pt"),
+    legend.title      = element_text(size = 7.5, face = "bold", hjust = 0.5),
+    legend.text       = element_text(size = 7),
+    legend.box.margin = margin(t = 4),
+    plot.margin       = margin(6, 8, 60, 6)
+  ) +
+  guides(shape = guide_legend(nrow = 3,
+                              override.aes = list(size = 2.5, fill = "grey60", colour = "black")))
+```
+
+
+
+```{r}
+#  Compile the figures and save
+fig3 <- p_a / p_b +
+  plot_layout(heights = c(1, 2.0)) &
+  theme(plot.background = element_rect(fill = "white", colour = NA))
+
+print(fig3)
+
+ggsave("figure3.pdf",
+       plot = fig3, width = 7, height = 9, units = "in",
+       device = cairo_pdf)
+
+ggsave("figure3.png",
+       plot = fig3, width = 7, height = 9, units = "in",
+       dpi = 300, bg = "white")
+
+message("figure3.pdf and figure3.png saved.")
+```
+

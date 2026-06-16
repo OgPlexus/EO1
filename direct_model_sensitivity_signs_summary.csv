@@ -1,0 +1,5 @@
+relationship,negative,near_zero,positive,n
+$\mu_s$ vs $\beta$,0,0,150,150
+$\mu_s$ vs $R_0$,123,0,27,150
+$D(\infty)$ vs $\beta$,57,5,88,150
+$D(\infty)$ vs final epidemic size,14,3,133,150
